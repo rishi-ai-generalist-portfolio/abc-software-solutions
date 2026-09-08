@@ -32,8 +32,7 @@ export async function appendLeadToSheet(lead: Lead): Promise<ChannelResult> {
   try {
     const auth = new google.auth.JWT({
       email: clientEmail,
-      // Vercel stores the key with literal \n; convert back to real newlines.
-      key: privateKey.replace(/\\n/g, "\n"),
+      key: normalizePrivateKey(privateKey),
       scopes: ["https://www.googleapis.com/auth/spreadsheets"],
     })
     const sheets = google.sheets({ version: "v4", auth })
@@ -123,6 +122,37 @@ export async function emailFoundersAboutLead(lead: Lead): Promise<ChannelResult>
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "email send failed" }
   }
+}
+
+/**
+ * Google service-account private keys are notoriously mangled when passed via
+ * env vars. This normalizes the common breakages:
+ *  - surrounding single/double quotes copied in from JSON
+ *  - literal "\n" / "\r\n" sequences instead of real newlines
+ *  - a base64-encoded PEM (starts without "-----BEGIN")
+ * A valid PEM must contain real newlines, or Node's crypto DECODER throws
+ * error:1E08010C:DECODER routines::unsupported.
+ */
+function normalizePrivateKey(raw: string): string {
+  let key = raw.trim()
+
+  // Strip a single layer of wrapping quotes.
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1)
+  }
+
+  // If it doesn't look like a PEM yet, it may be base64-encoded.
+  if (!key.includes("BEGIN") && !key.includes("\\n") && !key.includes("\n")) {
+    try {
+      const decoded = Buffer.from(key, "base64").toString("utf8")
+      if (decoded.includes("BEGIN")) key = decoded
+    } catch {
+      // fall through and try newline normalization below
+    }
+  }
+
+  // Convert escaped newlines to real ones.
+  return key.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n")
 }
 
 function escapeHtml(value: string): string {

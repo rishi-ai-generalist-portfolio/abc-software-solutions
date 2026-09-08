@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { appendLeadToSheet, emailFoundersAboutLead, type Lead } from "@/lib/leads/notify"
 
 const MAX = {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase = createAdminClient()
   const { data, error } = await supabase
     .from("business_leads")
     .insert({
